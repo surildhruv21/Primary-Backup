@@ -27,6 +27,11 @@ import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 
 import java.util.concurrent.Semaphore;
+import voldemort.client.StoreClientFactory;
+import voldemort.client.SocketStoreClientFactory;
+import voldemort.client.StoreClient;
+import voldemort.client.ClientConfig;
+import voldemort.versioning.Versioned;
 
 public class MasterDriver extends AbstractVerticle{
 
@@ -56,8 +61,14 @@ public class MasterDriver extends AbstractVerticle{
 		// 	// failed!
 		// 	}
 		// });
-		
 
+	  	// StoreClientFactory factory;
+	  	// StoreClient<String, String> client;
+		String bootstrapUrl = "tcp://128.237.139.210:6666";
+		StoreClientFactory factory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrl));
+	  	StoreClient<String, String> client = factory.getStoreClient("test");
+
+		
 
 		HttpServer server = vertx.createHttpServer();
 		server.requestHandler(new Handler<HttpServerRequest>() {
@@ -91,8 +102,11 @@ public class MasterDriver extends AbstractVerticle{
 			        	.add("Content-Length", String.valueOf(15))
 			            .add("Content-Type", "text/html; charset=UTF-8");
 			        System.out.println(command);
+
+
 					if(command.equalsIgnoreCase("get")){
-						req.response().write("get successful!");
+						Versioned<String> version = client.get("hello");
+						req.response().write(version.getValue());
 						req.response().end();
 						//get the result from database
 					} else if(command.equalsIgnoreCase("put")){
@@ -134,6 +148,9 @@ public class MasterDriver extends AbstractVerticle{
 							}
 							future.complete();
 						}, res -> {
+							// Versioned<String> version = new Versioned<String>("world");
+							// client.put("hello",version);
+							client.put("hello","world");
 							System.out.println("result is:"+res.result());
 							System.out.println("Sent to client");
 							req.response().write("put successful!");
