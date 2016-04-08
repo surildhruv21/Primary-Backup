@@ -26,54 +26,41 @@ import io.vertx.core.VertxOptions;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 
+import java.util.concurrent.Semaphore;
+import voldemort.client.StoreClientFactory;
+import voldemort.client.SocketStoreClientFactory;
+import voldemort.client.StoreClient;
+import voldemort.client.ClientConfig;
+import voldemort.versioning.Versioned;
+import voldemort.versioning.Version;
+
 public class ReplicaDriver1 extends AbstractVerticle{
 
 	private HashMap<String, Address> peer_servers = new HashMap<String, Address>();
 	private String local_name = "Server2";
-	private int server_comm_port;
 	private ParsedConfiguration result;
+	private int server_port_no;
 	public void start() {
-		// System.out.println("Enter the server name");
-		// Scanner sc = new Scanner(System.in);
-		// local_name = sc.nextLine();
+
 	  	parseFile();
 
+		String bootstrapUrl = "tcp://localhost:6666";
+		StoreClientFactory factory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrl));
+	  	StoreClient<String, String> client = factory.getStoreClient("test");
 
-		// Config hazelcastConfig = new Config();
-		// hazelcastConfig.getNetworkConfig().setPort( 5900 );
-		// // Now set some stuff on the config (omitted)
-
-		// ClusterManager mgr = new HazelcastClusterManager(hazelcastConfig);
-
-		// VertxOptions options = new VertxOptions().setClusterManager(mgr);
-
-		// Vertx.clusteredVertx(options, res -> {
-		// 	if (res.succeeded()) {
-		// 		// Vertx vertx = res.result();
-		// 		int i = 0;
-		// 	} else {
-		// 	// failed!
-		// 	}
-		// });
 		
-
 
 		HttpServer server = vertx.createHttpServer();
 		server.requestHandler(new Handler<HttpServerRequest>() {
 			public void handle(HttpServerRequest req) {
-			//        System.out.println("Got request: " + req.uri());
-			//        System.out.println("Headers are: ");
-			//        for (Map.Entry<String, String> entry : req.headers()) {
-			//          System.out.println(entry.getKey() + ":" + entry.getValue());
-			//        }
-
-
-
 				int i;
 				String uri = req.uri();
+				String query = req.query();
 				String command = "";
+				System.out.println(uri);
 				if(uri.contains("?")){
 					command = uri.substring(1,uri.indexOf('?'));
+					System.out.println(command);
 				}
 				if(command.equals("")){
 					req.response().setStatusCode(200);
@@ -84,31 +71,52 @@ public class ReplicaDriver1 extends AbstractVerticle{
 			        
 				}
 				else{
-					
-					req.response().setStatusCode(200);
-			        req.response().headers()
-			        	.add("Content-Length", String.valueOf(15))
-			            .add("Content-Type", "text/html; charset=UTF-8");
-			        System.out.println(command);
 					if(command.equalsIgnoreCase("get")){
-						req.response().write("get successful");
+						Versioned<String> version = client.get(query);
+						req.response().setStatusCode(200);
+			        	req.response().headers()
+			        		.add("Content-Length", String.valueOf(version.getValue().length()))
+			            	.add("Content-Type", "text/html; charset=UTF-8");
+						req.response().write(version.getValue());
+						req.response().end();
 						//get the result from database
-					} else if(command.equalsIgnoreCase("writeValue")){
-						System.out.println("Value to be written:"+ uri.substring(uri.indexOf('?')+1));
-						req.response().write("put successful!");
+					} else if(command.equalsIgnoreCase("put")){
+						
+						Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
+						version.setObject(query.substring(query.indexOf('=')+1));
+						Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
+						req.response().setStatusCode(200);
+		        		req.response().headers()
+		        			.add("Content-Length", String.valueOf(16))
+		            		.add("Content-Type", "text/html; charset=UTF-8");
+
+						req.response().write("write successful");
+						req.response().end();
+						
 						//perform consensus with other servers and get quorum and then push the changes
-					} else if(command.equalsIgnoreCase("update")){
-						req.response().write("update successful");
+					} else if(command.equalsIgnoreCase("delete")){
+						
+						boolean success = client.delete(query);
+						req.response().setStatusCode(200);
+		        		req.response().headers()
+		        			.add("Content-Length", String.valueOf(17))
+		            		.add("Content-Type", "text/html; charset=UTF-8");
+
+						req.response().write("delete successful");
+						req.response().end();
 						//perform consensus with other servers and get quorum and then push the changes
 					} else {
+						req.response().setStatusCode(200);
+			        	req.response().headers()
+			        		.add("Content-Length", String.valueOf(15))
+			            	.add("Content-Type", "text/html; charset=UTF-8");
+						
 						req.response().write("invalid request");
+						req.response().end();
 					}
 				}
-				req.response().end();
-			       // req.response().headers().set("Content-Type", "text/html; charset=UTF-8");
-			       // req.response().end("<html><body><h1>Hello from vert.x!</h1></body></html>");
 			}
-		}).listen(server_comm_port);
+		}).listen(server_port_no);
 		
 	}
 
@@ -122,8 +130,8 @@ public class ReplicaDriver1 extends AbstractVerticle{
 			result = (ParsedConfiguration) yaml.load(ios);
 			for (User user : result.configuration) {
 				if(local_name.equalsIgnoreCase(user.name)){
-					server_comm_port = user.port;
 					System.out.println(local_name + " " + user.name + " " + user.ip);
+					server_port_no = user.port;
 					continue;
 				} else {
 					peer_servers.put(user.name, new Address(user.ip, user.port));

@@ -32,6 +32,7 @@ import voldemort.client.SocketStoreClientFactory;
 import voldemort.client.StoreClient;
 import voldemort.client.ClientConfig;
 import voldemort.versioning.Versioned;
+import voldemort.versioning.Version;
 
 public class MasterDriver extends AbstractVerticle{
 
@@ -39,32 +40,10 @@ public class MasterDriver extends AbstractVerticle{
 	private String local_name = "Server1";
 	private ParsedConfiguration result;
 	public void start() {
-		// System.out.println("Enter the server name");
-		// Scanner sc = new Scanner(System.in);
-		// local_name = sc.nextLine();
+
 	  	parseFile();
 
-
-		// Config hazelcastConfig = new Config();
-		// hazelcastConfig.getNetworkConfig().setPort( 5900 );
-		// // Now set some stuff on the config (omitted)
-
-		// ClusterManager mgr = new HazelcastClusterManager(hazelcastConfig);
-
-		// VertxOptions options = new VertxOptions().setClusterManager(mgr);
-
-		// Vertx.clusteredVertx(options, res -> {
-		// 	if (res.succeeded()) {
-		// 		// Vertx vertx = res.result();
-		// 		int i = 0;
-		// 	} else {
-		// 	// failed!
-		// 	}
-		// });
-
-	  	// StoreClientFactory factory;
-	  	// StoreClient<String, String> client;
-		String bootstrapUrl = "tcp://128.237.139.210:6666";
+		String bootstrapUrl = "tcp://localhost:6666";
 		StoreClientFactory factory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrl));
 	  	StoreClient<String, String> client = factory.getStoreClient("test");
 
@@ -73,16 +52,9 @@ public class MasterDriver extends AbstractVerticle{
 		HttpServer server = vertx.createHttpServer();
 		server.requestHandler(new Handler<HttpServerRequest>() {
 			public void handle(HttpServerRequest req) {
-			//        System.out.println("Got request: " + req.uri());
-			//        System.out.println("Headers are: ");
-			//        for (Map.Entry<String, String> entry : req.headers()) {
-			//          System.out.println(entry.getKey() + ":" + entry.getValue());
-			//        }
-
-
-
 				int i;
 				String uri = req.uri();
+				String query = req.query();
 				String command = "";
 				if(uri.contains("?")){
 					command = uri.substring(1,uri.indexOf('?'));
@@ -96,16 +68,12 @@ public class MasterDriver extends AbstractVerticle{
 			        
 				}
 				else{
-					
-					req.response().setStatusCode(200);
-			        req.response().headers()
-			        	.add("Content-Length", String.valueOf(15))
-			            .add("Content-Type", "text/html; charset=UTF-8");
-			        System.out.println(command);
-
-
 					if(command.equalsIgnoreCase("get")){
-						Versioned<String> version = client.get("hello");
+						Versioned<String> version = client.get(query);
+						req.response().setStatusCode(200);
+			        	req.response().headers()
+			        		.add("Content-Length", String.valueOf(version.getValue().length()))
+			            	.add("Content-Type", "text/html; charset=UTF-8");
 						req.response().write(version.getValue());
 						req.response().end();
 						//get the result from database
@@ -113,13 +81,12 @@ public class MasterDriver extends AbstractVerticle{
 						int sem_init_value = -(peer_servers.size() - 1);
 						System.out.println(sem_init_value);
 
-						final Semaphore completeWork = new Semaphore(sem_init_value);
-						// ObservableFuture<HttpServer> observable = RxHelper.observableFuture();
+						final Semaphore completeWork = new Semaphore(sem_init_value); 
 						for (Map.Entry<String, Address> entry : peer_servers.entrySet()) {
 							//wait for other servers to respond and say a yes
-							String relativePath = "/writeValue" + uri.substring(uri.indexOf('?'));  
+							
 							HttpClient httpClient = vertx.createHttpClient();
-					        httpClient.getNow(entry.getValue().port, entry.getValue().ip, relativePath, new Handler<HttpClientResponse>() {
+					        httpClient.getNow(entry.getValue().port, entry.getValue().ip, uri, new Handler<HttpClientResponse>() {
 
 					            @Override
 					            public void handle(HttpClientResponse httpClientResponse) {
@@ -129,9 +96,7 @@ public class MasterDriver extends AbstractVerticle{
 					                    public void handle(Buffer buffer) {
 					                        System.out.println("Response (" + buffer.length() + "): ");
 					                        System.out.println(buffer.getString(0, buffer.length()));
-					                        System.out.println("Response received from:"+entry.getKey());
 					                        completeWork.release();
-					                        System.out.println("Release semaphore once");
 					                    }
 					                });
 					            }
@@ -148,28 +113,79 @@ public class MasterDriver extends AbstractVerticle{
 							}
 							future.complete();
 						}, res -> {
-							// Versioned<String> version = new Versioned<String>("world");
-							// client.put("hello",version);
-							client.put("hello","world");
-							System.out.println("result is:"+res.result());
-							System.out.println("Sent to client");
-							req.response().write("put successful!");
+							Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
+							version.setObject(query.substring(query.indexOf('=')+1));
+							Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
+							req.response().setStatusCode(200);
+			        		req.response().headers()
+			        			.add("Content-Length", String.valueOf(16))
+			            		.add("Content-Type", "text/html; charset=UTF-8");
+
+							req.response().write("write successful");
 							req.response().end();
 						});
 						
 						//perform consensus with other servers and get quorum and then push the changes
-					} else if(command.equalsIgnoreCase("update")){
-						req.response().write("update successful");
-						req.response().end();
+					} else if(command.equalsIgnoreCase("delete")){
+						int sem_init_value = -(peer_servers.size() - 1);
+						System.out.println(sem_init_value);
+
+						final Semaphore completeWork = new Semaphore(sem_init_value); 
+						for (Map.Entry<String, Address> entry : peer_servers.entrySet()) {
+							//wait for other servers to respond and say a yes
+							
+							HttpClient httpClient = vertx.createHttpClient();
+					        httpClient.getNow(entry.getValue().port, entry.getValue().ip, uri, new Handler<HttpClientResponse>() {
+
+					            @Override
+					            public void handle(HttpClientResponse httpClientResponse) {
+
+					                httpClientResponse.bodyHandler(new Handler<Buffer>() {
+					                    @Override
+					                    public void handle(Buffer buffer) {
+					                        System.out.println("Response (" + buffer.length() + "): ");
+					                        System.out.println(buffer.getString(0, buffer.length()));
+					                        completeWork.release();
+					                    }
+					                });
+					            }
+					        });
+						}
+						
+						vertx.executeBlocking(future -> {
+							try {
+								System.out.println("Attempting to acquire sem");
+								completeWork.acquire();
+								System.out.println("Acquired sem");
+							} catch(InterruptedException e){
+								e.printStackTrace();
+							}
+							future.complete();
+						}, res -> {
+							// Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
+							// version.setObject(query.substring(query.indexOf('=')+1));
+							// Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
+							boolean success = client.delete(query);
+
+							req.response().setStatusCode(200);
+			        		req.response().headers()
+			        			.add("Content-Length", String.valueOf(17))
+			            		.add("Content-Type", "text/html; charset=UTF-8");
+
+							req.response().write("delete successful");
+							req.response().end();
+						});
 						//perform consensus with other servers and get quorum and then push the changes
 					} else {
+						req.response().setStatusCode(200);
+			        	req.response().headers()
+			        		.add("Content-Length", String.valueOf(15))
+			            	.add("Content-Type", "text/html; charset=UTF-8");
+						
 						req.response().write("invalid request");
 						req.response().end();
 					}
 				}
-				// req.response().end();
-			       // req.response().headers().set("Content-Type", "text/html; charset=UTF-8");
-			       // req.response().end("<html><body><h1>Hello from vert.x!</h1></body></html>");
 			}
 		}).listen(8080);
 		

@@ -34,12 +34,11 @@ import voldemort.client.ClientConfig;
 import voldemort.versioning.Versioned;
 import voldemort.versioning.Version;
 
-public class ReplicaDriver2 extends AbstractVerticle{
+public class ReplicaDriver3 extends AbstractVerticle{
 
 	private HashMap<String, Address> peer_servers = new HashMap<String, Address>();
-	private String local_name = "Server3";
+	private String local_name = "Server4";
 	private ParsedConfiguration result;
-	private int server_port_no;
 	public void start() {
 
 	  	parseFile();
@@ -55,12 +54,11 @@ public class ReplicaDriver2 extends AbstractVerticle{
 			public void handle(HttpServerRequest req) {
 				int i;
 				String uri = req.uri();
+				String relativePath = req.path();
 				String query = req.query();
 				String command = "";
-				System.out.println(uri);
 				if(uri.contains("?")){
 					command = uri.substring(1,uri.indexOf('?'));
-					System.out.println(command);
 				}
 				if(command.equals("")){
 					req.response().setStatusCode(200);
@@ -71,6 +69,9 @@ public class ReplicaDriver2 extends AbstractVerticle{
 			        
 				}
 				else{
+					
+					
+			        System.out.println(command);
 					if(command.equalsIgnoreCase("get")){
 						Versioned<String> version = client.get(query);
 						req.response().setStatusCode(200);
@@ -116,7 +117,7 @@ public class ReplicaDriver2 extends AbstractVerticle{
 					}
 				}
 			}
-		}).listen(server_port_no);
+		}).listen(8080);
 		
 	}
 
@@ -131,7 +132,6 @@ public class ReplicaDriver2 extends AbstractVerticle{
 			for (User user : result.configuration) {
 				if(local_name.equalsIgnoreCase(user.name)){
 					System.out.println(local_name + " " + user.name + " " + user.ip);
-					server_port_no = user.port;
 					continue;
 				} else {
 					peer_servers.put(user.name, new Address(user.ip, user.port));
