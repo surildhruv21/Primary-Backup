@@ -36,8 +36,8 @@ import voldemort.versioning.Version;
 
 public class MasterDriver extends AbstractVerticle{
 
-	private HashMap<String, Address> peer_servers = new HashMap<String, Address>();
-	private String local_name = "Server1";
+	private LinkedHashMap<String, Address> peer_servers = new LinkedHashMap<String, Address>();
+	private String local_name = "Master";
 	private ParsedConfiguration result;
 	public void start() {
 
@@ -76,11 +76,8 @@ public class MasterDriver extends AbstractVerticle{
 			            	.add("Content-Type", "text/html; charset=UTF-8");
 						req.response().write(version.getValue());
 						req.response().end();
-						//get the result from database
 					} else if(command.equalsIgnoreCase("put")){
 						int sem_init_value = -(peer_servers.size() - 1);
-						System.out.println(sem_init_value);
-
 						final Semaphore completeWork = new Semaphore(sem_init_value); 
 						for (Map.Entry<String, Address> entry : peer_servers.entrySet()) {
 							//wait for other servers to respond and say a yes
@@ -94,8 +91,6 @@ public class MasterDriver extends AbstractVerticle{
 					                httpClientResponse.bodyHandler(new Handler<Buffer>() {
 					                    @Override
 					                    public void handle(Buffer buffer) {
-					                        System.out.println("Response (" + buffer.length() + "): ");
-					                        System.out.println(buffer.getString(0, buffer.length()));
 					                        completeWork.release();
 					                    }
 					                });
@@ -105,17 +100,13 @@ public class MasterDriver extends AbstractVerticle{
 						
 						vertx.executeBlocking(future -> {
 							try {
-								System.out.println("Attempting to acquire sem");
 								completeWork.acquire();
-								System.out.println("Acquired sem");
 							} catch(InterruptedException e){
 								e.printStackTrace();
 							}
 							future.complete();
 						}, res -> {
-							Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
-							version.setObject(query.substring(query.indexOf('=')+1));
-							Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
+							Version ret_val = client.put(query.substring(0,query.indexOf('=')),query.substring(query.indexOf('=')+1));
 							req.response().setStatusCode(200);
 			        		req.response().headers()
 			        			.add("Content-Length", String.valueOf(16))
@@ -124,12 +115,8 @@ public class MasterDriver extends AbstractVerticle{
 							req.response().write("write successful");
 							req.response().end();
 						});
-						
-						//perform consensus with other servers and get quorum and then push the changes
 					} else if(command.equalsIgnoreCase("delete")){
 						int sem_init_value = -(peer_servers.size() - 1);
-						System.out.println(sem_init_value);
-
 						final Semaphore completeWork = new Semaphore(sem_init_value); 
 						for (Map.Entry<String, Address> entry : peer_servers.entrySet()) {
 							//wait for other servers to respond and say a yes
@@ -143,8 +130,6 @@ public class MasterDriver extends AbstractVerticle{
 					                httpClientResponse.bodyHandler(new Handler<Buffer>() {
 					                    @Override
 					                    public void handle(Buffer buffer) {
-					                        System.out.println("Response (" + buffer.length() + "): ");
-					                        System.out.println(buffer.getString(0, buffer.length()));
 					                        completeWork.release();
 					                    }
 					                });
@@ -154,28 +139,29 @@ public class MasterDriver extends AbstractVerticle{
 						
 						vertx.executeBlocking(future -> {
 							try {
-								System.out.println("Attempting to acquire sem");
 								completeWork.acquire();
-								System.out.println("Acquired sem");
 							} catch(InterruptedException e){
 								e.printStackTrace();
 							}
 							future.complete();
 						}, res -> {
-							// Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
-							// version.setObject(query.substring(query.indexOf('=')+1));
-							// Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
 							boolean success = client.delete(query);
-
 							req.response().setStatusCode(200);
-			        		req.response().headers()
-			        			.add("Content-Length", String.valueOf(17))
-			            		.add("Content-Type", "text/html; charset=UTF-8");
+			            	if(success){
+			            		req.response().headers()
+			        				.add("Content-Length", String.valueOf(17))
+			            			.add("Content-Type", "text/html; charset=UTF-8");
+								req.response().write("delete successful");
+			            	}
+							else{
+								req.response().headers()
+			        				.add("Content-Length", String.valueOf(19))
+			            			.add("Content-Type", "text/html; charset=UTF-8");
+								req.response().write("delete unsuccessful");
+							}
 
-							req.response().write("delete successful");
 							req.response().end();
 						});
-						//perform consensus with other servers and get quorum and then push the changes
 					} else {
 						req.response().setStatusCode(200);
 			        	req.response().headers()

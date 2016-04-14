@@ -34,10 +34,10 @@ import voldemort.client.ClientConfig;
 import voldemort.versioning.Versioned;
 import voldemort.versioning.Version;
 
-public class ReplicaDriver3 extends AbstractVerticle{
+public class ReplicaDriver8 extends AbstractVerticle{
 
 	private HashMap<String, Address> peer_servers = new HashMap<String, Address>();
-	private String local_name = "Server3";
+	private String local_name = "Server8";
 	private ParsedConfiguration result;
 	private int server_port_no;
 	public void start() {

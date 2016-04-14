@@ -37,7 +37,7 @@ import voldemort.versioning.Version;
 public class ReplicaDriver2 extends AbstractVerticle{
 
 	private HashMap<String, Address> peer_servers = new HashMap<String, Address>();
-	private String local_name = "Server3";
+	private String local_name = "Server2";
 	private ParsedConfiguration result;
 	private int server_port_no;
 	public void start() {
@@ -79,12 +79,8 @@ public class ReplicaDriver2 extends AbstractVerticle{
 			            	.add("Content-Type", "text/html; charset=UTF-8");
 						req.response().write(version.getValue());
 						req.response().end();
-						//get the result from database
 					} else if(command.equalsIgnoreCase("put")){
-						
-						Versioned<String> version = client.get(query.substring(0,query.indexOf('=')));
-						version.setObject(query.substring(query.indexOf('=')+1));
-						Version ret_val = client.put(query.substring(0,query.indexOf('=')),version);
+						Version ret_val = client.put(query.substring(0,query.indexOf('=')),query.substring(query.indexOf('=')+1));
 						req.response().setStatusCode(200);
 		        		req.response().headers()
 		        			.add("Content-Length", String.valueOf(16))
@@ -92,8 +88,6 @@ public class ReplicaDriver2 extends AbstractVerticle{
 
 						req.response().write("write successful");
 						req.response().end();
-						
-						//perform consensus with other servers and get quorum and then push the changes
 					} else if(command.equalsIgnoreCase("delete")){
 						
 						boolean success = client.delete(query);
@@ -104,7 +98,6 @@ public class ReplicaDriver2 extends AbstractVerticle{
 
 						req.response().write("delete successful");
 						req.response().end();
-						//perform consensus with other servers and get quorum and then push the changes
 					} else {
 						req.response().setStatusCode(200);
 			        	req.response().headers()
