@@ -18,6 +18,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 
 
 public class YcsbClient extends DB {
@@ -70,7 +71,7 @@ public class YcsbClient extends DB {
 		try{
 			URI uri = new URI( String.format( 
                            "http://localhost:8080/put?"+key+"=%s", 
-                           URLEncoder.encode( aggregated_value , "UTF8" ) ) );
+                           URLEncoder.encode( aggregated_value , "UTF-8" ) ) );
 			HttpClient client = HttpClientBuilder.create().build();
 			HttpGet request = new HttpGet(uri);
 			HttpResponse response = client.execute(request);
@@ -107,24 +108,18 @@ public class YcsbClient extends DB {
 
 		try{
 			HttpResponse response = client.execute(request);
-			BufferedReader rd = new BufferedReader(
-				new InputStreamReader(response.getEntity().getContent()));
-
-			String line = "";
-			while ((line = rd.readLine()) != null) {
-				jsonStr.append(line);
-			}
+			String response_body = URLDecoder.decode(EntityUtils.toString(response.getEntity(), "UTF-8"));
+			jsonStr.append(response_body);
 		} catch (Exception e){
 			e.printStackTrace();
 		}
-
+		
 		int ret = 0;
 		if ((jsonStr.toString()).equals(""))
 			ret = -1;
-		
 		result = new HashMap<String, ByteIterator>();
 		try {
-			jsonObject = new JSONObject(jsonStr);
+			jsonObject = new JSONObject(jsonStr.toString());
 			@SuppressWarnings("unchecked")
 			Iterator<String> fieldItr = jsonObject.keys();
 			while(fieldItr.hasNext()) {
@@ -140,9 +135,12 @@ public class YcsbClient extends DB {
 			}	
 		} catch(JSONException e) {
 			result = new HashMap<String, ByteIterator>();
-			System.err.println(e.getMessage());
+			System.err.println(jsonStr.toString());
+			System.err.println();
+			System.err.println("yes"+	e.getMessage());
 			return -1;
 		}
+
 		return ret;
 	}
 
@@ -155,58 +153,7 @@ public class YcsbClient extends DB {
 	@Override
 	public int update(String table, String key,
 			HashMap<String, ByteIterator> updateValues) {
-		StringBuilder jsonStr = new StringBuilder();
-		
-		JSONObject jsonObject = new JSONObject();
-		
-		try {
-			jsonObject = new JSONObject(jsonStr.toString());
-			Iterator<String> fieldItr = updateValues.keySet().iterator();
-			while(fieldItr.hasNext()) {
-				String field = fieldItr.next();
-				if(jsonObject.has(field)) {
-					jsonObject.remove(field);
-				}
-				
-				try {
-					jsonObject.put(field, updateValues.get(field).toString());	
-				} catch(JSONException e) {
-					System.err.println(e.getMessage());
-					continue;
-				}
-			}
-
-		} catch(JSONException e) {
-			System.err.println(e.getMessage() + " " + jsonStr);
-			return -1;
-		}
-
-		String aggregated_value = jsonObject.toString();
-		StringBuffer result = new StringBuffer();
-		try{
-			URI uri = new URI( String.format( 
-                           "http://localhost:8080/put?"+key+"=%s", 
-                           URLEncoder.encode( aggregated_value , "UTF8" ) ) );
-			HttpClient client = HttpClientBuilder.create().build();
-			HttpGet request = new HttpGet(uri);
-			HttpResponse response = client.execute(request);
-			BufferedReader rd = new BufferedReader(
-				new InputStreamReader(response.getEntity().getContent()));
-
-			String line = "";
-			while ((line = rd.readLine()) != null) {
-				result.append(line);
-			}
-		} catch (Exception e){
-			e.printStackTrace();
-		}
-
-		int ret = 0;
-		if ((result.toString()).equals("write successful"))
-			ret = 0;
-		else
-			ret = -1;
+		int ret = insert(table, key, updateValues);
 		return ret;
-		
 	}
 }
